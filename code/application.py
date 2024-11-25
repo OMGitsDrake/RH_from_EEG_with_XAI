@@ -35,7 +35,7 @@ def f1_m(y_true, y_pred):
     return 2 * ((precision * recall) / (precision + recall + K.epsilon()))
 
 def log(str, lvl='INFO'):
-    st.write(f"{lvl}: {str}")
+    print(f"{lvl}: {str}")
 
 #==============Data structures==============#
 cnn_stats = {
