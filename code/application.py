@@ -4,12 +4,12 @@ import matplotlib.pyplot as plt
 import warnings
 import streamlit as st
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, BatchNormalization, ReLU, Dropout
+from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score
 # New import rule from tensorflow
 from tensorflow.keras import backend as K
-# from tensorflow.keras.optimizers import Adam
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.callbacks import EarlyStopping
 
 # Disable all warnings
 warnings.filterwarnings("ignore")
@@ -34,10 +34,18 @@ def f1_m(y_true, y_pred):
     recall = recall_m(y_true, y_pred)
     return 2 * ((precision * recall) / (precision + recall + K.epsilon()))
 
-def log(str, lvl='INFO'):
-    print(f"{lvl}: {str}")
+def LOG(msg, lvl='INFO'):
+    print(f"{lvl}: {str(msg)}")
 
 #==============Data structures==============#
+# ES = EarlyStopping(
+#     monitor='val_loss',
+#     patience=10,
+#     min_delta=0.1,
+#     mode='min',
+#     restore_best_weights=True
+# )
+
 cnn_stats = {
     'acc':[],
     'f1':[],
@@ -78,63 +86,99 @@ for f in label_files:
 s = st.button('Start computation')
 
 n_soggetti = len(data)
-n_series = 23  # Numero di serie temporali per gruppo
+n_series = 23  # Numero di serie temporali per window
+
+multiple_subj = True
 
 if (len(data) == len(labels)) and data and labels and s:
     scaler = StandardScaler()
     with st.spinner('Working...'):
         for i in range(n_soggetti):            
-            n_samples = 0
-            X_train = []
-            X_test = []
-            st.write(f"Loading data of subject {i+1}...")
+            if n_soggetti < 2:
+                multiple_subj = False
 
-            for j in range(n_soggetti):
-                # Dataset di test
-                if j == i:
-                    X_test = data[i].values
-                    series = X_test.reshape(-1)
-                    X_test = scaler.fit_transform(X_test)
-                    n_samples_i = int(data_files[i].name[-11:-7])
-                    X_test = X_test.reshape(n_samples_i, n_points, n_series)
-                    continue
+                n_samples = int(data_files[0].name[-11:-7])
+                X = data[0].values.reshape(n_samples, n_points, n_series)
+                y = labels[0].values
 
-                # Dataset di training
-                X_train.extend(data[j].values)  # append to the whole time series
-                n_samples += int(data_files[j].name[-11:-7])
+                test_idx_end = int((n_samples // 2) + int(n_samples * 0.1))
+                test_idx_begin = int((n_samples // 2) - int(n_samples * 0.1))
 
-            X_train = scaler.fit_transform(X_train)
-            X_train = X_train.reshape(n_samples, n_points, n_series)
+                # Create a boolean mask to select elements to keep for training and testing sets
+                mask_train = np.ones(X.shape[0], dtype=bool)
+                mask_train[test_idx_begin:test_idx_end] = False # da begin a (end - 1) setta False
+                X_train = X[mask_train, :, :]
+                y_train = y[mask_train]
 
+                mask_test = np.zeros(X.shape[0], dtype=bool)
+                mask_test[test_idx_begin:test_idx_end] = True
+                X_test = X[mask_test, :, :]
+                y_test = y[mask_test]
 
-            st.write("Data loaded!")
-            log(X_train.shape)
-            log(X_test.shape)
+                X_train_2D = X_train.reshape(X_train.shape[0], -1)
+                X_test_2D = X_test.reshape(X_test.shape[0], -1)
 
-            # ---------------------------LABEL GENERATION-------------------------------
+                # Apply StandardScaler
+                X_train = scaler.fit_transform(X_train_2D)
+                X_test = scaler.transform(X_test_2D)
 
-            y_train = []
-            y_test = []
-            first_iter = True
-            st.write(f"Loading labels of subject {i+1}...")
+                # Reshape back to 3D for CNN
+                X_train = X_train.reshape(X_train.shape[0], n_points, n_series)
+                X_test = X_test.reshape(X_test.shape[0], n_points, n_series)
 
-            for j in range(n_soggetti):
-                # Label di testing
-                if j == i:
-                    y_test = labels[i].values
-                    continue
-                # Label di training
-                if first_iter:
-                    y_train = labels[j].values
-                    first_iter = False
-                else:
-                    y_train = np.append(y_train, labels[j].values, axis=0)
-                    # y_train.extend(labels[j].values)
+                st.write("Data and labels loaded!")
+                LOG(f'Data train: {X_train.shape}, data test: {X_test.shape}, train labels: {y_train.shape} test labels: {y_test.shape}')
+            else:
+                #---------------------------DATA GENERATION-------------------------------#
+                if n_soggetti > 1:
+                    n_samples = 0
+                    X_train = []
+                    X_test = []
+                    st.write(f"Loading data of subject {i+1}...")
+                    for j in range(n_soggetti):
+                        # Dataset di test
+                        if j == i:
+                            X_test = data[i].values
+                            X_test = scaler.fit_transform(X_test)
+                            n_samples_i = int(data_files[i].name[-11:-7])
+                            X_test = X_test.reshape(n_samples_i, n_points, n_series)
+                            continue
 
-            st.write("Labels loaded!")
-            log(y_train.shape)
-            log(y_test.shape)
+                        # Dataset di training
+                        X_train.extend(data[j].values)  # append to the whole time series
+                        n_samples += int(data_files[j].name[-11:-7])
 
+                    X_train = scaler.fit_transform(X_train)
+                    X_train = X_train.reshape(n_samples, n_points, n_series)
+                
+                st.write("Data loaded!")
+                LOG(X_train.shape)
+                LOG(X_test.shape)
+
+                #---------------------------LABEL GENERATION-------------------------------#
+
+                y_train = []
+                y_test = []
+                first_iter = True
+                st.write(f"Loading labels of subject {i+1}...")
+
+                for j in range(n_soggetti):
+                    # Label di testing
+                    if j == i:
+                        y_test = labels[i].values
+                        continue
+                    # Label di training
+                    if first_iter:
+                        y_train = labels[j].values
+                        first_iter = False
+                    else:
+                        y_train = np.append(y_train, labels[j].values, axis=0)
+                        # y_train.extend(labels[j].values)
+
+                st.write("Labels loaded!")
+                LOG(y_train.shape)
+                LOG(y_test.shape)
+            
             #------------------------CNN------------------------#
             model = Sequential()
             model.add(Conv1D(filters=64, kernel_size=5, activation='relu', input_shape=(n_points, n_series)))
@@ -142,8 +186,8 @@ if (len(data) == len(labels)) and data and labels and s:
             model.add(Flatten())
             # model.add(Dense(1024, activation='relu'))
             # model.add(Dense(256, activation='relu'))
-            # model.add(Dense(64, activation='relu'))
             model.add(Dense(128, activation='relu'))
+            model.add(Dense(64, activation='relu'))
             model.add(Dense(1, activation='sigmoid'))
 
             # Compile the model
@@ -152,7 +196,10 @@ if (len(data) == len(labels)) and data and labels and s:
 
             # Training
             st.write("Training...")
-            history = model.fit(X_train, y_train, epochs=100, batch_size=64, validation_data=(X_test, y_test), verbose=0)
+            history = model.fit(X_train, y_train,
+                                epochs=100, batch_size=64,
+                                validation_data=(X_test, y_test),
+                                verbose=0)
 
             accuracy = history.history['accuracy']
             val_accuracy = history.history['val_accuracy']
@@ -169,7 +216,7 @@ if (len(data) == len(labels)) and data and labels and s:
             loss = history.history['loss']
             val_loss = history.history['val_loss']
 
-            st.write(f'Subject {i+1}:')
+            st.header(f'Subject {i+1}:')
             
             # training
             plt.figure(figsize=(12, 5))
@@ -210,12 +257,13 @@ if (len(data) == len(labels)) and data and labels and s:
             st.write("Testing...")
             loss, accuracy, f1, precision, recall = model.evaluate(X_test, y_test, verbose=0)
 
-            if accuracy > cnn_best_worst_acc_case[0]:
-                cnn_best_worst_acc_case[0] = accuracy
-                cnn_best_worst_acc_case[1] = i+1
-            if accuracy < cnn_best_worst_acc_case[2]:
-                cnn_best_worst_acc_case[2] = accuracy
-                cnn_best_worst_acc_case[3] = i+1
+            if multiple_subj:
+                if accuracy > cnn_best_worst_acc_case[0]:
+                    cnn_best_worst_acc_case[0] = accuracy
+                    cnn_best_worst_acc_case[1] = i+1
+                if accuracy < cnn_best_worst_acc_case[2]:
+                    cnn_best_worst_acc_case[2] = accuracy
+                    cnn_best_worst_acc_case[3] = i+1
 
             cnn_stats['acc'].append(accuracy)
             cnn_stats['f1'].append(f1)
@@ -227,39 +275,40 @@ if (len(data) == len(labels)) and data and labels and s:
             predictions = model.predict(X_test)
             y_pred = (predictions > 0.5).astype(int)
     
-            st.header(f'RESULTS OF SUB {i+1}')
+            st.header(f'RESULTS:')
             st.write(f'Accuracy:\t{cnn_stats["acc"][i]:.4f}')
             st.write(f'F1 score:\t{cnn_stats["f1"][i]:.4f}')
             st.write(f'Precision:\t{cnn_stats["precision"][i]:.4f}')
             st.write(f'Recall:\t{cnn_stats["recall"][i]:.4f}')
             st.write(f'Loss:\t{cnn_stats["loss"][i]:.4f}')
 
-            plt.figure(figsize=(12, 5))
-            plt.plot(series, alpha=0.7)
-            plt.title('Time Series')
-            plt.grid(alpha=0.3)
+            # Plottare t_window in modo da avere una window randomica da far vedere anche dove e' posizionata la labl in caso di classe positiva
+            for i in range(4):
+                # series = X_test.reshape(-1)[0:n_points]
+                # r = next((i for i, x in enumerate(y_test) if x == 0), -1)
+                r = np.random.randint(0, len(y_test))
+                LOG(f'Index of label: {r}')
+                t_window = X_test.reshape(-1)[n_points*r:n_points*(r+1)]
+                m = np.argmax(t_window)
+                LOG(f't_window argmax: {m}')
+                plt.figure(figsize=(12, 5))
+                plt.plot(t_window, alpha=0.7)
+                # il primo parametro e' difficile da trovare
+                plt.scatter(len(t_window)//2, y_test[r], color='green', marker='+', alpha=0.7, label='Label')
+                plt.scatter(len(t_window)//2, y_pred[r], color='red', marker='x', alpha=0.5, label='Prediction')
+                plt.scatter(m, np.max(t_window), color='blue', marker='s', alpha=0.7, label='Peak value')
+                plt.xlim([0,len(t_window)])
+                plt.title(f'Time Window #{r}')
+                plt.grid(alpha=0.3)
+                plt.legend()
 
-            st.pyplot(plt)
+                st.pyplot(plt)
 
-            ind = np.arange(len(y_pred))
-            plt.figure(figsize=(12, 1.5))
-
-            plt.subplot(2, 1, 1)
-            plt.scatter(ind, y_test, color='green', marker='.', alpha=0.7, label='Labels')
-            plt.yticks([0,1], labels=['Assente', 'Presente'])
-            plt.title('Labels')
-            plt.grid(alpha=0.3)
-
-            plt.subplot(2, 1, 2)
-            plt.scatter(ind, y_pred, color='red', marker='.', alpha=0.7, label='Predictions')
-            plt.yticks([0,1], labels=['Assente', 'Presente'])
-            plt.title('Predictions')
-            plt.grid(alpha=0.3)
-
-            st.pyplot(plt)
-
-    st.write(f'Best Accuracy score: {cnn_best_worst_acc_case[0]:.6f} with subject {cnn_best_worst_acc_case[1]}')
-    st.write(f'Worst Accuracy score: {cnn_best_worst_acc_case[2]:.6f} with subject {cnn_best_worst_acc_case[3]}')
+            # ind = np.arange(len(y_pred))
+            # plt.scatter(ind, y_test, color='green', marker='.', alpha=0.7, label='Labels')
+    if multiple_subj:
+        st.write(f'Best Accuracy score: {cnn_best_worst_acc_case[0]:.6f} with subject {cnn_best_worst_acc_case[1]}')
+        st.write(f'Worst Accuracy score: {cnn_best_worst_acc_case[2]:.6f} with subject {cnn_best_worst_acc_case[3]}')
 
     # sub_label = [f'Subject {j+1}' for j in range(n_soggetti)]
     # label_pos = [(n_overlap*j + (n_overlap - 1)/2) for j in range(n_soggetti)]
