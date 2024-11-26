@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import warnings
 import streamlit as st
 import time
+import io
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense
 from sklearn.preprocessing import StandardScaler
@@ -46,6 +47,12 @@ def LOG(msg, lvl='INFO'):
 #     mode='min',
 #     restore_best_weights=True
 # )
+
+if "png_buffers" not in st.session_state:
+    st.session_state.png_buffers = []
+
+if "txt_buffers" not in st.session_state:
+    st.session_state.txt_buffers = []
 
 cnn_stats = {
     'acc':[],
@@ -98,6 +105,8 @@ if (len(data) == len(labels)) and data and labels and s:
     with st.spinner('Working...'):
         for i in range(n_soggetti):
             if n_soggetti < 2:
+                LOG("Loading data and labels")
+                
                 multiple_subj = False
 
                 n_samples = int(data_files[0].name[-11:-7])
@@ -129,15 +138,15 @@ if (len(data) == len(labels)) and data and labels and s:
                 X_train = X_train.reshape(X_train.shape[0], n_points, n_series)
                 X_test = X_test.reshape(X_test.shape[0], n_points, n_series)
 
-                st.write("Data and labels loaded!")
-                LOG(f'Data train: {X_train.shape}, data test: {X_test.shape}, train labels: {y_train.shape} test labels: {y_test.shape}')
+                LOG("Data and labels loaded!")
+                LOG(f'Train data: {X_train.shape}, test data: {X_test.shape}, train labels: {y_train.shape} test labels: {y_test.shape}')
             else:
                 #---------------------------DATA GENERATION-------------------------------#
                 if n_soggetti > 1:
                     n_samples = 0
                     X_train = []
                     X_test = []
-                    st.write(f"Loading data of subject {i+1}...")
+                    LOG(f"Loading data of subject {i+1}...")
                     for j in range(n_soggetti):
                         # Dataset di test
                         if j == i:
@@ -154,16 +163,16 @@ if (len(data) == len(labels)) and data and labels and s:
                     X_train = scaler.fit_transform(X_train)
                     X_train = X_train.reshape(n_samples, n_points, n_series)
                 
-                st.write("Data loaded!")
-                LOG(X_train.shape)
-                LOG(X_test.shape)
+                LOG("Data loaded!")
+                LOG(f'Train data: {X_train.shape}')
+                LOG(f'Test data: {X_test.shape}')
 
                 #---------------------------LABEL GENERATION-------------------------------#
 
                 y_train = []
                 y_test = []
                 first_iter = True
-                st.write(f"Loading labels of subject {i+1}...")
+                LOG(f"Loading labels of subject {i+1}...")
 
                 for j in range(n_soggetti):
                     # Label di testing
@@ -178,9 +187,9 @@ if (len(data) == len(labels)) and data and labels and s:
                         y_train = np.append(y_train, labels[j].values, axis=0)
                         # y_train.extend(labels[j].values)
 
-                st.write("Labels loaded!")
-                LOG(y_train.shape)
-                LOG(y_test.shape)
+                LOG("Labels loaded!")
+                LOG(f'Training labels: {y_train.shape}')
+                LOG(f'Testing labels: {y_test.shape}')
             
             #------------------------CNN------------------------#
             model = Sequential()
@@ -198,7 +207,6 @@ if (len(data) == len(labels)) and data and labels and s:
                             metrics=['accuracy', f1_m, precision_m, recall_m])
 
             # Training
-            st.write("Training...")
             history = model.fit(X_train, y_train,
                                 epochs=100, batch_size=64,
                                 validation_data=(X_test, y_test),
@@ -257,7 +265,6 @@ if (len(data) == len(labels)) and data and labels and s:
             st.pyplot(plt)
 
             # Testing
-            st.write("Testing...")
             loss, accuracy, f1, precision, recall = model.evaluate(X_test, y_test, verbose=0)
 
             if multiple_subj:
@@ -278,24 +285,29 @@ if (len(data) == len(labels)) and data and labels and s:
             predictions = model.predict(X_test)
             y_pred = (predictions > 0.5).astype(int)
     
-            res = f'Accuracy:\t{cnn_stats["acc"][i]:.4f}\n\
-F1 score:\t{cnn_stats["f1"][i]:.4f}\n\
-Precision:\t{cnn_stats["precision"][i]:.4f}\n\
-Recall:\t{cnn_stats["recall"][i]:.4f}\n\
-Loss:\t{cnn_stats["loss"][i]:.4f}\n\n'
+            res = f'Accuracy: {cnn_stats["acc"][i]:.4f}\n\
+F1 score: {cnn_stats["f1"][i]:.4f}\n\
+Precision: {cnn_stats["precision"][i]:.4f}\n\
+Recall: {cnn_stats["recall"][i]:.4f}\n\
+Loss: {cnn_stats["loss"][i]:.4f}\n\n'
 
             st.header(f'RESULTS:')
             st.write(res)
 
-            # Rimpiazzare con download file.txt
-            with open(base_path + "results/performanceTS_ROLLINGS_rawCLASSIFICATION_%s.txt" % (time.strftime("%Y%m%d")),
-                      "a",
-                      encoding="utf-8") as file_object:
-                file_object.write(f'{i+1}) {time.strftime("%d%H%M")}\n' + res)
-                file_object.close()
+            if len(st.session_state.txt_buffers) <= i:
+                st.session_state.txt_buffers.append(f'{i+1}) {time.strftime("%d-%m @ %H:%M")}\n' + res)
 
-            # Plottare t_window in modo da avere una window randomica da far vedere anche dove e' posizionata la labl in caso di classe positiva
-            for i in range(5):
+            # Rimpiazzare con download file.txt
+            st.download_button(
+                label="Download Results",
+                # data = f'{i+1}) {time.strftime("%d-%m @ %H:%M")}\n' + res,
+                data = st.session_state.txt_buffers[i],
+                file_name="performanceTS_ROLLINGS_rawCLASSIFICATION_%s.txt" % (time.strftime("%d-%m-%Y")),
+                mime = "text",
+                key=f'Text {i+1}'
+            )
+
+            for k in range(1):
                 # series = X_test.reshape(-1)[0:n_points]
                 # r = next((i for i, x in enumerate(y_test) if x == 0), -1)
                 r = np.random.randint(0, len(y_test))
@@ -305,7 +317,7 @@ Loss:\t{cnn_stats["loss"][i]:.4f}\n\n'
                 LOG(f't_window argmax: {m}')
                 plt.figure(figsize=(12, 5))
                 plt.plot(t_window, alpha=0.7)
-                plt.plot(0, color='black', alpha=0.5)
+                plt.axhline(y=0, color='black', alpha=0.4, linewidth=1)
                 # il primo parametro e' difficile da trovare
                 plt.scatter(len(t_window)//2, y_test[r], color='green', marker='+', alpha=0.7, label='Label')
                 plt.scatter(len(t_window)//2, y_pred[r], color='red', marker='x', alpha=0.5, label='Prediction')
@@ -318,6 +330,21 @@ Loss:\t{cnn_stats["loss"][i]:.4f}\n\n'
                 plt.legend()
 
                 st.pyplot(plt)
+
+                img_buf = io.BytesIO()
+                plt.savefig(img_buf, format='png')
+                img_buf.seek(0)
+
+                if len(st.session_state.png_buffers) <= k:
+                    st.session_state.png_buffers.append(img_buf)
+
+                st.download_button(
+                    label=f"Download Time Window {r} of subject {i+1}",
+                    data = st.session_state.png_buffers[k],
+                    file_name=f"Time_window_{r}_of_subject_{i+1}.png",
+                    mime = "image/png",
+                    key = f'Images {i+1}'
+                )
 
             # os.makedirs(os.path.join(data_path, 'figures'), exist_ok=True)
             # plt.savefig(data_path + f'figures/reg_{i}_{cts}_{cto}.png')
