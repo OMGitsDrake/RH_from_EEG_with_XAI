@@ -68,16 +68,16 @@ cnn_best_worst_acc_case = [0, -1, np.inf, -1]
 base_path = "C:/Users/Utente/Drake/UniPi/Tesi/RH_from_EEG_with_XAI/"
 
 #==============UI display==============#
-st.title("Retrieve HR from EEG")
+st.title("Retrieve HR from EEG using a Convolutional Neural Network")
 st.markdown('''
-    Please upload files **which file name formats as follows (for the data)**:
-    subject\_*i*\_MADtsROLLINGrawCLASSIFICATION\_DATA\_\_*ts\_len*\_*overlap*\_BK\_*n\_groups*\_*n\_series*.csv\n
+    Please upload files **which file name formats as follows**:
+    subject\_*[i]*\_MADtsROLLINGrawCLASSIFICATION\_[DATA/LABELS]\_\_*[wlen]*\_*[overlap]*\_BK\_*[grps]*\_*[series]*.csv\n
     Where:\n
     - **i** is the subject taken in exam
-    - **ts_len** is the length of the time series
-    - **overlap** is the amount of data overlap between each time series
-    - **n_group** is the number of groups in the time series
-    - **n_series** is the number of time series per group
+    - **w_len** is the length of each time window
+    - **overlap** is the amount of data overlap between each time window
+    - **grps** is the number of groups in the time series
+    - **series** is the number of correlated channels
 ''')
 
 overlap = st.number_input("Select the time window overlap", 25, 125, "min", 5, "%d")
@@ -346,14 +346,21 @@ Loss: {cnn_stats["loss"][i]:.4f}\n\n'
                     key = f'Images {i+1}'
                 )
 
-            # os.makedirs(os.path.join(data_path, 'figures'), exist_ok=True)
-            # plt.savefig(data_path + f'figures/reg_{i}_{cts}_{cto}.png')
-
-            # ind = np.arange(len(y_pred))
-            # plt.scatter(ind, y_test, color='green', marker='.', alpha=0.7, label='Labels')
     if multiple_subj:
         st.write(f'Best Accuracy score: {cnn_best_worst_acc_case[0]:.6f} with subject {cnn_best_worst_acc_case[1]}')
         st.write(f'Worst Accuracy score: {cnn_best_worst_acc_case[2]:.6f} with subject {cnn_best_worst_acc_case[3]}')
+    
+    # h5_buf = io.BytesIO()
+    # with h5_buf as f:
+    #     model.save(f, overwrite=True)
+    #     f.seek(0)
+    # st.download_button(
+    #     label="Download The CNN model",
+    #     data = h5_buf,
+    #     file_name=f"CNN_HR_from_EEG_model_{n_soggetti}_{n_points}_{overlap}.h5",
+    #     mime = "application/octet-stream",
+    #     key = 'model'
+    # )
 
     # sub_label = [f'Subject {j+1}' for j in range(n_soggetti)]
     # label_pos = [(n_overlap*j + (n_overlap - 1)/2) for j in range(n_soggetti)]
