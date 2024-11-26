@@ -8,3 +8,8 @@
 *.synctex.gz
 *.tex
 *.toc
+*.zip
+*.txt
+cnn4hrfromeeg.py
+dummy.py
+inspection.py

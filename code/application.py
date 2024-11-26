@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import warnings
 import streamlit as st
+import time
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense
 from sklearn.preprocessing import StandardScaler
@@ -57,6 +58,8 @@ cnn_stats = {
 # best, id, worst, id
 cnn_best_worst_acc_case = [0, -1, np.inf, -1]
 
+base_path = "C:/Users/Utente/Drake/UniPi/Tesi/RH_from_EEG_with_XAI/"
+
 #==============UI display==============#
 st.title("Retrieve HR from EEG")
 st.markdown('''
@@ -93,7 +96,7 @@ multiple_subj = True
 if (len(data) == len(labels)) and data and labels and s:
     scaler = StandardScaler()
     with st.spinner('Working...'):
-        for i in range(n_soggetti):            
+        for i in range(n_soggetti):
             if n_soggetti < 2:
                 multiple_subj = False
 
@@ -275,15 +278,24 @@ if (len(data) == len(labels)) and data and labels and s:
             predictions = model.predict(X_test)
             y_pred = (predictions > 0.5).astype(int)
     
+            res = f'Accuracy:\t{cnn_stats["acc"][i]:.4f}\n\
+F1 score:\t{cnn_stats["f1"][i]:.4f}\n\
+Precision:\t{cnn_stats["precision"][i]:.4f}\n\
+Recall:\t{cnn_stats["recall"][i]:.4f}\n\
+Loss:\t{cnn_stats["loss"][i]:.4f}\n\n'
+
             st.header(f'RESULTS:')
-            st.write(f'Accuracy:\t{cnn_stats["acc"][i]:.4f}')
-            st.write(f'F1 score:\t{cnn_stats["f1"][i]:.4f}')
-            st.write(f'Precision:\t{cnn_stats["precision"][i]:.4f}')
-            st.write(f'Recall:\t{cnn_stats["recall"][i]:.4f}')
-            st.write(f'Loss:\t{cnn_stats["loss"][i]:.4f}')
+            st.write(res)
+
+            # Rimpiazzare con download file.txt
+            with open(base_path + "results/performanceTS_ROLLINGS_rawCLASSIFICATION_%s.txt" % (time.strftime("%Y%m%d")),
+                      "a",
+                      encoding="utf-8") as file_object:
+                file_object.write(f'{i+1}) {time.strftime("%d%H%M")}\n' + res)
+                file_object.close()
 
             # Plottare t_window in modo da avere una window randomica da far vedere anche dove e' posizionata la labl in caso di classe positiva
-            for i in range(4):
+            for i in range(5):
                 # series = X_test.reshape(-1)[0:n_points]
                 # r = next((i for i, x in enumerate(y_test) if x == 0), -1)
                 r = np.random.randint(0, len(y_test))
@@ -293,16 +305,22 @@ if (len(data) == len(labels)) and data and labels and s:
                 LOG(f't_window argmax: {m}')
                 plt.figure(figsize=(12, 5))
                 plt.plot(t_window, alpha=0.7)
+                plt.plot(0, color='black', alpha=0.5)
                 # il primo parametro e' difficile da trovare
                 plt.scatter(len(t_window)//2, y_test[r], color='green', marker='+', alpha=0.7, label='Label')
                 plt.scatter(len(t_window)//2, y_pred[r], color='red', marker='x', alpha=0.5, label='Prediction')
                 plt.scatter(m, np.max(t_window), color='blue', marker='s', alpha=0.7, label='Peak value')
+                plt.axvline(x=(len(t_window)-overlap), color='red', linestyle='--', linewidth=1, alpha=0.6)
+                plt.axvline(x=overlap, color='red', linestyle='--', linewidth=1, alpha=0.6, label='Overlap delimiter')
                 plt.xlim([0,len(t_window)])
                 plt.title(f'Time Window #{r}')
                 plt.grid(alpha=0.3)
                 plt.legend()
 
                 st.pyplot(plt)
+
+            # os.makedirs(os.path.join(data_path, 'figures'), exist_ok=True)
+            # plt.savefig(data_path + f'figures/reg_{i}_{cts}_{cto}.png')
 
             # ind = np.arange(len(y_pred))
             # plt.scatter(ind, y_test, color='green', marker='.', alpha=0.7, label='Labels')
