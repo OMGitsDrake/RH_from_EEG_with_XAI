@@ -13,3 +13,6 @@
 cnn4hrfromeeg.py
 dummy.py
 inspection.py
+*.keras
+.gitignore
+*~

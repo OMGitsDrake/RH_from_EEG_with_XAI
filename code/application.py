@@ -166,7 +166,7 @@ if (len(data) == len(labels)) and data and labels and s:
             else:
                 #---------------------------DATA GENERATION-------------------------------#
                 if n_soggetti > 1:
-                    n_samples = 0
+                    n_samples_overall = 0
                     X_train = []
                     X_test = []
                     LOG(f"Loading data of subject {i+1}...")
@@ -180,10 +180,10 @@ if (len(data) == len(labels)) and data and labels and s:
 
                         # Dataset di training
                         X_train.extend(data[j].values)  # append to the whole time series
-                        n_samples += int(data_files[j].name[-11:-7])
+                        n_samples_overall += int(data_files[j].name[-11:-7])
 
                     X_train = scaler.fit_transform(X_train)
-                    X_train = X_train.reshape(n_samples, n_points, n_series)
+                    X_train = X_train.reshape(n_samples_overall, n_points, n_series)
                 
                 LOG("Data loaded!")
                 LOG(f'Train data: {X_train.shape}')
@@ -325,11 +325,11 @@ if (len(data) == len(labels)) and data and labels and s:
             
             start = n_points * r
             end = n_points * (r + window_printed)
-            t_window = X_test.reshape(-1)[start:end]
+            t_window = X_test.flatten()[start:end]
             
             #----DEBUG----
             plt.figure(figsize=(12, 5))
-            plt.plot(X_test.reshape(-1), linewidth=1)
+            plt.plot(X_test.flatten(), linewidth=1)
             plt.grid(alpha=0.3)
             plt.title('Original time series')
             st.pyplot(plt)
@@ -447,7 +447,7 @@ if (len(data) == len(labels)) and data and labels and s:
     # plt.tight_layout()
     # st.pyplot(plt)
 
-            # series = data[i].values.reshape(-1)
+            # series = data[i].values.flatten()
             # X = data[i].values
             # file_name = files[i].name
 
