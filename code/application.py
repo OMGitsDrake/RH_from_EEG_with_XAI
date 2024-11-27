@@ -1,10 +1,12 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import warnings
 import streamlit as st
 import time
 import io
+import zipfile
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense
 from sklearn.preprocessing import StandardScaler
@@ -39,6 +41,26 @@ def f1_m(y_true, y_pred):
 def LOG(msg, lvl='INFO'):
     print(f"{lvl}: {str(msg)}")
 
+def create_zip(strings, filenames):
+    zip_buffer = io.BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for string, filename in zip(strings, filenames):
+            zip_file.writestr(filename, string)
+    
+    zip_buffer.seek(0)
+    return zip_buffer
+
+def create_image_zip(images, filenames):
+    zip_buffer = io.BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for image, filename in zip(images, filenames):
+            zip_file.writestr(filename, image.read())
+            
+    
+    zip_buffer.seek(0)
+    return zip_buffer
 #==============Data structures==============#
 # ES = EarlyStopping(
 #     monitor='val_loss',
@@ -74,7 +96,7 @@ st.markdown('''
     subject\_*[i]*\_MADtsROLLINGrawCLASSIFICATION\_[DATA/LABELS]\_\_*[wlen]*\_*[overlap]*\_BK\_*[grps]*\_*[series]*.csv\n
     Where:\n
     - **i** is the subject taken in exam
-    - **w_len** is the length of each time window
+    - **wlen** is the length of each time window
     - **overlap** is the amount of data overlap between each time window
     - **grps** is the number of groups in the time series
     - **series** is the number of correlated channels
@@ -82,6 +104,7 @@ st.markdown('''
 
 overlap = st.number_input("Select the time window overlap", 25, 125, "min", 5, "%d")
 n_points = st.number_input("Select the number of points per time window", 150, 250, "min", 50, "%d") + 1
+window_printed = st.number_input("Select the number of windows extracted per subject", 1, 10, "min", 1, "%d")
 
 data = []
 data_files = st.file_uploader("Upload the EEG file for the data", type="csv", accept_multiple_files=True, help='Upload CSV files representing the EEG of the subjects')
@@ -103,13 +126,13 @@ multiple_subj = True
 if (len(data) == len(labels)) and data and labels and s:
     scaler = StandardScaler()
     with st.spinner('Working...'):
+        n_samples = int(data_files[0].name[-11:-7])
         for i in range(n_soggetti):
             if n_soggetti < 2:
                 LOG("Loading data and labels")
                 
                 multiple_subj = False
 
-                n_samples = int(data_files[0].name[-11:-7])
                 X = data[0].values.reshape(n_samples, n_points, n_series)
                 y = labels[0].values
 
@@ -152,8 +175,7 @@ if (len(data) == len(labels)) and data and labels and s:
                         if j == i:
                             X_test = data[i].values
                             X_test = scaler.fit_transform(X_test)
-                            n_samples_i = int(data_files[i].name[-11:-7])
-                            X_test = X_test.reshape(n_samples_i, n_points, n_series)
+                            X_test = X_test.reshape(n_samples, n_points, n_series)
                             continue
 
                         # Dataset di training
@@ -254,8 +276,8 @@ if (len(data) == len(labels)) and data and labels and s:
 
             # loss
             plt.subplot(1, 3, 3)
-            plt.plot(loss, label='Training')
-            plt.plot(val_loss, label='Validation')
+            plt.plot(loss, label='Training', color='cyan')
+            plt.plot(val_loss, label='Validation', color='violet')
             plt.xlabel('Epochs')
             plt.title('Loss')
             plt.grid(True)
@@ -285,71 +307,98 @@ if (len(data) == len(labels)) and data and labels and s:
             predictions = model.predict(X_test)
             y_pred = (predictions > 0.5).astype(int)
     
-            res = f'Accuracy: {cnn_stats["acc"][i]:.4f}\n\
-F1 score: {cnn_stats["f1"][i]:.4f}\n\
-Precision: {cnn_stats["precision"][i]:.4f}\n\
-Recall: {cnn_stats["recall"][i]:.4f}\n\
-Loss: {cnn_stats["loss"][i]:.4f}\n\n'
+            res = f''':blue[Accuracy]: {cnn_stats["acc"][i]:.4f}\n
+:orange[F1 score]: {cnn_stats["f1"][i]:.4f}\n
+:green[Precision]: {cnn_stats["precision"][i]:.4f}\n
+:red[Recall]: {cnn_stats["recall"][i]:.4f}\n
+:violet[Loss]: {cnn_stats["loss"][i]:.4f}
+'''
 
             st.header(f'RESULTS:')
-            st.write(res)
+            st.markdown(res)
 
             if len(st.session_state.txt_buffers) <= i:
                 st.session_state.txt_buffers.append(f'{i+1}) {time.strftime("%d-%m @ %H:%M")}\n' + res)
 
-            # Rimpiazzare con download file.txt
-            st.download_button(
-                label="Download Results",
-                # data = f'{i+1}) {time.strftime("%d-%m @ %H:%M")}\n' + res,
-                data = st.session_state.txt_buffers[i],
-                file_name="performanceTS_ROLLINGS_rawCLASSIFICATION_%s.txt" % (time.strftime("%d-%m-%Y")),
-                mime = "text",
-                key=f'Text {i+1}'
-            )
+            r = np.random.randint(0, len(y_test))
+            LOG(f'Starting label: {r}')
+            
+            start = n_points * r
+            end = n_points * (r + window_printed)
+            t_window = X_test.reshape(-1)[start:end]
+            
+            #----DEBUG----
+            plt.figure(figsize=(12, 5))
+            plt.plot(X_test.reshape(-1), linewidth=1)
+            plt.grid(alpha=0.3)
+            plt.title('Original time series')
+            st.pyplot(plt)
+            plt.figure(figsize=(12, 5))
+            plt.plot(t_window, linewidth=1)
+            plt.grid(alpha=0.3)
+            plt.title('Original time windows')
+            st.pyplot(plt)
+            #----DEBUG----
 
-            for k in range(1):
-                # series = X_test.reshape(-1)[0:n_points]
-                # r = next((i for i, x in enumerate(y_test) if x == 0), -1)
-                r = np.random.randint(0, len(y_test))
-                LOG(f'Index of label: {r}')
-                t_window = X_test.reshape(-1)[n_points*r:n_points*(r+1)]
-                m = np.argmax(t_window)
-                LOG(f't_window argmax: {m}')
-                plt.figure(figsize=(12, 5))
-                plt.plot(t_window, alpha=0.7)
-                plt.axhline(y=0, color='black', alpha=0.4, linewidth=1)
-                # il primo parametro e' difficile da trovare
-                plt.scatter(len(t_window)//2, y_test[r], color='green', marker='+', alpha=0.7, label='Label')
-                plt.scatter(len(t_window)//2, y_pred[r], color='red', marker='x', alpha=0.5, label='Prediction')
-                plt.scatter(m, np.max(t_window), color='blue', marker='s', alpha=0.7, label='Peak value')
-                plt.axvline(x=(len(t_window)-overlap), color='red', linestyle='--', linewidth=1, alpha=0.6)
-                plt.axvline(x=overlap, color='red', linestyle='--', linewidth=1, alpha=0.6, label='Overlap delimiter')
-                plt.xlim([0,len(t_window)])
-                plt.title(f'Time Window #{r}')
-                plt.grid(alpha=0.3)
-                plt.legend()
+            plt.figure(figsize=(12, 5))
+            for k in range(window_printed):
+                to_print = t_window[k*n_points:(k+1)*n_points]
+                if y_test[k]:
+                    plt.plot(range(n_points*k, n_points*(k+1)), to_print, color='green')
+                else:
+                    plt.plot(range(n_points*k, n_points*(k+1)), to_print, color='red')
+                if y_test[k]:
+                    plt.scatter(np.argmax(to_print)+(k*n_points), np.max(to_print), color='blue', marker='s', alpha=0.5)
+                plt.axvline(x=(k*n_points), color='orange', linestyle='--', linewidth=1, alpha=0.6)
+                plt.axvline(x=len(to_print)*(k+1)-overlap, color='violet', linestyle='--', linewidth=1, alpha=0.8)
+                plt.axvline(x=overlap+k*n_points, color='violet', linestyle='--', linewidth=1, alpha=0.8)
+            plt.axhline(y=0, color='black', alpha=0.4, linewidth=1)
+            plt.xlim([0,len(t_window)])
+            plt.title(f'Time Windows starting from {r}-th')
+            plt.grid(alpha=0.3)
 
-                st.pyplot(plt)
+            st.pyplot(plt)
 
-                img_buf = io.BytesIO()
-                plt.savefig(img_buf, format='png')
-                img_buf.seek(0)
+            st.subheader('Legend')
+            st.markdown('''
+            **:red[- Peak absent]**\n
+            **:green[- Peak present]**\n
+            **:blue[- Peak value]**\n
+            **:violet[- Overlap delimiter]**\n
+            **:orange[- Window delimiter]**\n
+            ''')
 
-                if len(st.session_state.png_buffers) <= k:
-                    st.session_state.png_buffers.append(img_buf)
+            img_buf = io.BytesIO()
+            plt.savefig(img_buf, format='png')
+            img_buf.seek(0)
 
-                st.download_button(
-                    label=f"Download Time Window {r} of subject {i+1}",
-                    data = st.session_state.png_buffers[k],
-                    file_name=f"Time_window_{r}_of_subject_{i+1}.png",
-                    mime = "image/png",
-                    key = f'Images {i+1}'
-                )
+            if len(st.session_state.png_buffers) <= window_printed:
+                st.session_state.png_buffers.append(img_buf)
 
     if multiple_subj:
         st.write(f'Best Accuracy score: {cnn_best_worst_acc_case[0]:.6f} with subject {cnn_best_worst_acc_case[1]}')
         st.write(f'Worst Accuracy score: {cnn_best_worst_acc_case[2]:.6f} with subject {cnn_best_worst_acc_case[3]}')
     
+    filenames = [f"Subject_{i+1}.txt" for i in range(n_soggetti)]
+    txt_zip = create_zip(st.session_state.txt_buffers, filenames)
+    st.download_button(
+        label="Download Results",
+        data = txt_zip,
+        file_name='archivio.zip',
+        mime = "application/zip",
+        key = 'Text'
+    )
+
+    filenames = [f"img_{i+1}.png" for i in range(n_soggetti*window_printed)]
+    png_zip = create_image_zip(st.session_state.png_buffers, filenames)
+    st.download_button(
+        label="Download Images",
+        data = png_zip,
+        file_name= "archivio_immagini.zip",
+        mime = "application/archive",
+        key = 'Images'
+    )
+
     # h5_buf = io.BytesIO()
     # with h5_buf as f:
     #     model.save(f, overwrite=True)
