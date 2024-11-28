@@ -18,6 +18,10 @@ from tensorflow.keras.callbacks import EarlyStopping
 # Disable all warnings
 warnings.filterwarnings("ignore")
 
+st.set_page_config(
+    page_icon="icons/heart-rate.png"  # Percorso relativo o assoluto dell'immagine
+)
+
 def recall_m(y_true, y_pred):
     y_true = K.cast(y_true, "float32")
     true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
@@ -209,8 +213,7 @@ if (len(data) == len(labels)) and data and labels and s:
                         first_iter = False
                     else:
                         y_train = np.append(y_train, labels[j].values, axis=0)
-                        # y_train.extend(labels[j].values)
-
+           
                 LOG("Labels loaded!")
                 LOG(f'Training labels: {y_train.shape}')
                 LOG(f'Testing labels: {y_test.shape}')
@@ -356,7 +359,7 @@ if (len(data) == len(labels)) and data and labels and s:
                 color = 'green' if y_pred[k] and y_test[k] else 'red'
                 plt.plot(range(n_points*k, n_points*(k+1)), to_print, color=color)
 
-                plt.axvline(x=(k*n_points), color='orange', linestyle='--', linewidth=1, alpha=0.6)
+                plt.axvline(x=(k*n_points), color='orange', linestyle='--', linewidth=2, alpha=0.6)
                 plt.axvline(x=len(to_print)*(k+1)-overlap, color='violet', linestyle='--', linewidth=1, alpha=0.8)
                 plt.axvline(x=overlap+k*n_points, color='violet', linestyle='--', linewidth=1, alpha=0.8)
             plt.axhline(y=0, color='black', alpha=0.4, linewidth=1)
