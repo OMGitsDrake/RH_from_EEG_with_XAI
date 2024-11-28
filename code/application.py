@@ -123,6 +123,8 @@ n_series = 23  # Numero di serie temporali per window
 
 multiple_subj = True
 
+totalTime = 0
+
 if (len(data) == len(labels)) and data and labels and s:
     scaler = StandardScaler()
     with st.spinner('Working...'):
@@ -228,6 +230,7 @@ if (len(data) == len(labels)) and data and labels and s:
             model.compile(loss='binary_crossentropy', optimizer='adam',
                             metrics=['accuracy', f1_m, precision_m, recall_m])
 
+            startTime = time.time()
             # Training
             history = model.fit(X_train, y_train,
                                 epochs=100, batch_size=64,
@@ -314,6 +317,10 @@ if (len(data) == len(labels)) and data and labels and s:
 :violet[Loss]: {cnn_stats["loss"][i]:.4f}
 '''
 
+            endTime = time.time()
+            totalTime += endTime-startTime
+            
+            st.divider()
             st.header(f'RESULTS:')
             st.markdown(res)
 
@@ -343,12 +350,12 @@ if (len(data) == len(labels)) and data and labels and s:
             plt.figure(figsize=(12, 5))
             for k in range(window_printed):
                 to_print = t_window[k*n_points:(k+1)*n_points]
-                if y_test[k]:
-                    plt.plot(range(n_points*k, n_points*(k+1)), to_print, color='green')
-                else:
-                    plt.plot(range(n_points*k, n_points*(k+1)), to_print, color='red')
+                
                 if y_test[k]:
                     plt.scatter(np.argmax(to_print)+(k*n_points), np.max(to_print), color='blue', marker='s', alpha=0.5)
+                color = 'green' if y_pred[k] and y_test[k] else 'red'
+                plt.plot(range(n_points*k, n_points*(k+1)), to_print, color=color)
+
                 plt.axvline(x=(k*n_points), color='orange', linestyle='--', linewidth=1, alpha=0.6)
                 plt.axvline(x=len(to_print)*(k+1)-overlap, color='violet', linestyle='--', linewidth=1, alpha=0.8)
                 plt.axvline(x=overlap+k*n_points, color='violet', linestyle='--', linewidth=1, alpha=0.8)
@@ -361,9 +368,9 @@ if (len(data) == len(labels)) and data and labels and s:
 
             st.subheader('Legend')
             st.markdown('''
-            **:red[- Peak absent]**\n
-            **:green[- Peak present]**\n
-            **:blue[- Peak value]**\n
+            **:green[- Predicted well]**\n
+            **:red[- Mistaken]**\n
+            **:blue[- Peak value (if label present)]**\n
             **:violet[- Overlap delimiter]**\n
             **:orange[- Window delimiter]**\n
             ''')
@@ -375,10 +382,41 @@ if (len(data) == len(labels)) and data and labels and s:
             if len(st.session_state.png_buffers) <= window_printed:
                 st.session_state.png_buffers.append(img_buf)
 
+    st.divider()
+
     if multiple_subj:
         st.write(f'Best Accuracy score: {cnn_best_worst_acc_case[0]:.6f} with subject {cnn_best_worst_acc_case[1]}')
         st.write(f'Worst Accuracy score: {cnn_best_worst_acc_case[2]:.6f} with subject {cnn_best_worst_acc_case[3]}')
     
+        st.write(f'Avg computation time: {totalTime/n_soggetti:.2f}')
+
+        sub_label = [f'Subject {j+1}' for j in range(n_soggetti)]
+
+        plt.figure(figsize=(12, 5))
+        plt.subplot(1, 2, 1)
+        plt.plot(cnn_stats['acc'], label='Accuracy', marker='.', linestyle='-')
+        plt.plot(cnn_stats['f1'], label='F1 score', marker='.', linestyle='-')
+        plt.plot(cnn_stats['precision'], label='Precision', marker='.', linestyle='-')
+        plt.plot(cnn_stats['recall'], label='Recall', marker='.', linestyle='-')
+        plt.xlabel('Subjects')
+        plt.ylabel('Metrics')
+        plt.xticks(np.array(range(n_soggetti)), sub_label, rotation=45)
+        plt.title('CNN Metrics')
+        plt.grid(alpha=0.5)
+        plt.legend()
+
+        plt.subplot(1, 2, 2)
+        plt.plot(cnn_stats['loss'], label='Loss', marker='.', linestyle='-')
+        plt.xlabel('Subjects')
+        plt.ylabel('Loss')
+        plt.xticks(np.array(range(n_soggetti)), sub_label, rotation=45)
+        plt.title('CNN Loss')
+        plt.grid(alpha=0.5)
+        plt.legend()
+
+        plt.tight_layout()
+        st.pyplot(plt)
+
     filenames = [f"Subject_{i+1}.txt" for i in range(n_soggetti)]
     txt_zip = create_zip(st.session_state.txt_buffers, filenames)
     st.download_button(
@@ -398,89 +436,3 @@ if (len(data) == len(labels)) and data and labels and s:
         mime = "application/archive",
         key = 'Images'
     )
-
-    # h5_buf = io.BytesIO()
-    # with h5_buf as f:
-    #     model.save(f, overwrite=True)
-    #     f.seek(0)
-    # st.download_button(
-    #     label="Download The CNN model",
-    #     data = h5_buf,
-    #     file_name=f"CNN_HR_from_EEG_model_{n_soggetti}_{n_points}_{overlap}.h5",
-    #     mime = "application/octet-stream",
-    #     key = 'model'
-    # )
-
-    # sub_label = [f'Subject {j+1}' for j in range(n_soggetti)]
-    # label_pos = [(n_overlap*j + (n_overlap - 1)/2) for j in range(n_soggetti)]
-
-    # plt.figure(figsize=(17, 5))
-    # plt.plot(series, cnn_stats['acc'], label='Accuracy', marker='.', linestyle='-')
-    # plt.plot(series, cnn_stats['f1'], label='F1 score', marker='.', linestyle='-')
-    # plt.plot(series, cnn_stats['precision'], label='Precision', marker='.', linestyle='-')
-    # plt.plot(series, cnn_stats['recall'], label='Recall', marker='.', linestyle='-')
-    # plt.xlabel('Overlap by subject')
-    # plt.ylabel('Metrics')
-    # plt.xticks(label_pos, sub_label, rotation=45)
-    # plt.title('CNN Metrics over multiple overlap len')
-    # plt.grid(True)
-    # plt.legend()
-
-    # plt.subplot(1, 2, 1)
-    # plt.plot(y_, cnn_stats['loss'], label='Loss', marker='.', linestyle='-')
-    # plt.xlabel('Overlap by subject')
-    # plt.ylabel('Loss')
-    # plt.xticks(label_pos, sub_label, rotation=45)
-    # plt.title('CNN Loss over multiple overlap len')
-    # plt.grid(True)
-    # plt.legend()
-
-    # plt.subplot(1, 2, 2)
-    # plt.plot(indices, cnn_stats['loss'], label='Loss', marker='.', linestyle='-')
-    # plt.xlabel('Overlap by subject')
-    # plt.ylabel('Loss')
-    # plt.xticks(label_pos, sub_label, rotation=45)
-    # plt.title('CNN Loss over multiple overlap len')
-    # plt.grid(True)
-    # plt.legend()
-
-    # plt.tight_layout()
-    # st.pyplot(plt)
-
-            # series = data[i].values.flatten()
-            # X = data[i].values
-            # file_name = files[i].name
-
-            # # Split e normalizzazione
-            # scaler = StandardScaler()
-
-            # #==========CNN SETUP==========#
-            # X = X.reshape(n_samples, n_points, n_series)
-
-            # # LABELS
-            # y = labels[i].values
-
-            # test_idx_end = int((n_samples // 2) + int(n_samples * 0.1))
-            # test_idx_begin = int((n_samples // 2) - int(n_samples * 0.1))
-
-            # # Create a boolean mask to select elements to keep for training and testing sets
-            # mask_train = np.ones(X.shape[0], dtype=bool)
-            # mask_train[test_idx_begin:test_idx_end] = False # da begin a (end - 1) setta False
-            # X_train = X[mask_train, :, :]
-            # y_train = y[mask_train]
-
-            # mask_test = np.zeros(X.shape[0], dtype=bool)
-            # mask_test[test_idx_begin:test_idx_end] = True
-            # X_test = X[mask_test, :, :]
-            # y_test = y[mask_test]
-
-            # X_train_2D = X_train.reshape(X_train.shape[0], -1)
-            # X_test_2D = X_test.reshape(X_test.shape[0], -1)
-
-            # # Apply StandardScaler
-            # X_train = scaler.fit_transform(X_train_2D)
-            # X_test = scaler.transform(X_test_2D)
-
-            # # Reshape back to 3D for CNN
-            # X_train = X_train.reshape(X_train.shape[0], n_points, n_series)
-            # X_test = X_test.reshape(X_test.shape[0], n_points, n_series)
