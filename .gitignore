@@ -16,3 +16,7 @@ inspection.py
 *.keras
 .gitignore
 *~
+*.md
+*.blg
+*.bbl
+*.bib

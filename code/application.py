@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 import warnings
 import streamlit as st
 import time
@@ -12,13 +11,14 @@ from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense
 from sklearn.preprocessing import StandardScaler
 # New import rule from tensorflow
 from tensorflow.keras import backend as K
-from sklearn.model_selection import train_test_split
 from tensorflow.keras.callbacks import EarlyStopping
 
 # Disable all warnings
 warnings.filterwarnings("ignore")
 
+
 st.set_page_config(
+    page_title="Convolutional Heart Rate Discovery",
     page_icon="icons/heart-rate.png"  # Percorso relativo o assoluto dell'immagine
 )
 
@@ -120,7 +120,11 @@ label_files = st.file_uploader("Upload the labels", type="csv", accept_multiple_
 for f in label_files:
     labels.append(pd.read_csv(f))
 
+
 s = st.button('Start computation')
+
+if st.button("Reload"):
+    st.rerun()
 
 n_soggetti = len(data)
 n_series = 23  # Numero di serie temporali per window
@@ -223,10 +227,7 @@ if (len(data) == len(labels)) and data and labels and s:
             model.add(Conv1D(filters=64, kernel_size=5, activation='relu', input_shape=(n_points, n_series)))
             model.add(MaxPooling1D(pool_size=2))
             model.add(Flatten())
-            # model.add(Dense(1024, activation='relu'))
-            # model.add(Dense(256, activation='relu'))
             model.add(Dense(128, activation='relu'))
-            model.add(Dense(64, activation='relu'))
             model.add(Dense(1, activation='sigmoid'))
 
             # Compile the model
