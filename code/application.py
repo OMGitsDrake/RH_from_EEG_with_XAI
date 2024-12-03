@@ -127,7 +127,7 @@ if st.button("Reload"):
     st.rerun()
 
 n_soggetti = len(data)
-n_series = 23  # Numero di serie temporali per window
+n_series = 23  # Numero di canali correlati
 
 multiple_subj = True
 
